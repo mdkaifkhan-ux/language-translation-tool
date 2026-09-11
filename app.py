@@ -3,10 +3,6 @@ import requests
 
 app = Flask(__name__)
 
-# MyMemory is used instead of Google Cloud Translation so this demo
-# does not require a Google Cloud billing account or API key.
-MYMEMORY_URL = "https://api.mymemory.translated.net/get"
-
 LANGUAGES = {
     "English": "en",
     "Hindi": "hi",
@@ -28,30 +24,37 @@ LANGUAGES = {
     "Punjabi": "pa"
 }
 
+GOOGLE_TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
+
 
 def translate_text(text, source, target):
-    # MyMemory's public REST endpoint requires a language pair.
-    # For "Auto Detect", use English as a simple demo fallback.
-    if source == "auto":
-        source = "en"
-
     params = {
-        "q": text,
-        "langpair": f"{source}|{target}",
-        "mt": "1"
+        "client": "gtx",
+        "sl": source if source != "auto" else "auto",
+        "tl": target,
+        "dt": "t",
+        "q": text
     }
 
-    response = requests.get(MYMEMORY_URL, params=params, timeout=20)
+    response = requests.get(
+        GOOGLE_TRANSLATE_URL,
+        params=params,
+        timeout=20
+    )
 
     if not response.ok:
-        raise RuntimeError(f"Translation service returned HTTP {response.status_code}.")
+        raise RuntimeError(
+            f"Translation service returned HTTP {response.status_code}."
+        )
 
     data = response.json()
 
-    if data.get("responseStatus") not in (200, "200"):
-        raise RuntimeError(data.get("responseDetails") or "Translation failed.")
+    if not data or not data[0]:
+        raise RuntimeError("No translation was returned.")
 
-    translated = data.get("responseData", {}).get("translatedText")
+    translated = "".join(
+        part[0] for part in data[0] if part and part[0]
+    )
 
     if not translated:
         raise RuntimeError("No translation was returned.")
@@ -75,9 +78,9 @@ def translate():
     if not text:
         return jsonify({"error": "Please enter some text."}), 400
 
-    if len(text.encode("utf-8")) > 500:
+    if len(text) > 5000:
         return jsonify({
-            "error": "For this free demo, please keep the text under 500 bytes."
+            "error": "Please keep the text under 5000 characters."
         }), 400
 
     if target not in LANGUAGES.values():
