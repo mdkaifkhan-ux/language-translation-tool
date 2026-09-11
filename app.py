@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import requests
+from urllib.parse import quote
 
 app = Flask(__name__)
 
@@ -11,7 +12,7 @@ LANGUAGES = {
     "German": "de",
     "Japanese": "ja",
     "Korean": "ko",
-    "Chinese": "zh-CN",
+    "Chinese": "zh",
     "Arabic": "ar",
     "Russian": "ru",
     "Portuguese": "pt",
@@ -24,42 +25,7 @@ LANGUAGES = {
     "Punjabi": "pa"
 }
 
-GOOGLE_TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
-
-
-def translate_text(text, source, target):
-    params = {
-        "client": "gtx",
-        "sl": source if source != "auto" else "auto",
-        "tl": target,
-        "dt": "t",
-        "q": text
-    }
-
-    response = requests.get(
-        GOOGLE_TRANSLATE_URL,
-        params=params,
-        timeout=20
-    )
-
-    if not response.ok:
-        raise RuntimeError(
-            f"Translation service returned HTTP {response.status_code}."
-        )
-
-    data = response.json()
-
-    if not data or not data[0]:
-        raise RuntimeError("No translation was returned.")
-
-    translated = "".join(
-        part[0] for part in data[0] if part and part[0]
-    )
-
-    if not translated:
-        raise RuntimeError("No translation was returned.")
-
-    return translated
+LINGVA_URL = "https://lingva.ml/api/v1"
 
 
 @app.route("/")
@@ -78,20 +44,28 @@ def translate():
     if not text:
         return jsonify({"error": "Please enter some text."}), 400
 
-    if len(text) > 5000:
-        return jsonify({
-            "error": "Please keep the text under 5000 characters."
-        }), 400
-
-    if target not in LANGUAGES.values():
-        return jsonify({"error": "Invalid target language."}), 400
-
-    if source != "auto" and source not in LANGUAGES.values():
-        return jsonify({"error": "Invalid source language."}), 400
+    if len(text) > 4000:
+        return jsonify({"error": "Please keep text under 4000 characters."}), 400
 
     try:
-        translated = translate_text(text, source, target)
+        encoded_text = quote(text, safe="")
+        url = f"{LINGVA_URL}/{source}/{target}/{encoded_text}"
+
+        response = requests.get(url, timeout=20)
+
+        if not response.ok:
+            return jsonify({
+                "error": f"Translation service returned HTTP {response.status_code}."
+            }), 502
+
+        result = response.json()
+        translated = result.get("translation")
+
+        if not translated:
+            return jsonify({"error": "No translation was returned."}), 502
+
         return jsonify({"translation": translated})
+
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
